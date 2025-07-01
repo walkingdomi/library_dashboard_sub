@@ -1,0 +1,9 @@
+streamlit
+st-pages>=0.4.4
+pandas
+plotly
+folium
+streamlit-folium
+streamlit-echarts
+requests
+openpyxl
