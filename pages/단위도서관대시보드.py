@@ -50,6 +50,8 @@ with st.container():
         (df_library['자치구'] == selected_gu) &
         (df_library['도서관명'] == selected_library)
     ]['행정동'].unique())].iloc[:, 2:].sum()
+    age_sum['95세 이상'] = age_sum.get('95~99세', 0) + age_sum.get('100세 이상', 0)
+    age_sum = age_sum.drop(['95~99세', '100세 이상'])
     covered_dongs = df_library[
         (df_library['자치구'] == selected_gu) &
         (df_library['도서관명'] == selected_library)
@@ -84,7 +86,7 @@ with st.container():
 
     with col_bar:
         # 65세 이상 컬럼명 리스트
-        elderly_cols = ['65~69세', '70~74세', '75~79세', '80~84세', '85~89세', '90~94세', '95~99세', '100세 이상']
+        elderly_cols = ['65~69세', '70~74세', '75~79세', '80~84세', '85~89세', '90~94세', '95세 이상']
         
         # 색상 지정: 65세 이상 오렌지, 나머지 스카이블루
         colors = ['orange' if age in elderly_cols else 'skyblue' for age in age_sum.index]
