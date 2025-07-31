@@ -7,6 +7,7 @@ import requests
 from datetime import datetime 
 
 st.set_page_config(page_title="서울시 도서관 대시보드", layout="wide")
+st.image("LIBSCOPElogo.jpeg", width=200)
 st.title("📊 서울시 자치구별 현황")
 
 # 자치구 코드 ↔ 이름 매핑
@@ -62,14 +63,20 @@ with tab1:
     bar_x = age_df.index.tolist()
     bar_y = age_df.values.tolist()
 
-    color1 = "#1959a8"
-    color2 = "#fa6e30"
+    import re
+
+    color_old = "#ffae00"    # orange (65세 이상)
+    color_young = "#8ed6fb"  # skyblue (65세 미만)
+
     bar_colors = []
-    found_old = False
     for label in bar_x:
-        if any(x in label for x in ["65", "70", "75", "80", "85", "90", "95"]):
-            found_old = True
-        bar_colors.append(color2 if found_old else color1)
+        label_clean = str(label).strip()
+        m = re.match(r"(\d+)", label_clean)
+        age = int(m.group(1)) if m else 0
+        if age >= 65:
+            bar_colors.append(color_old)
+        else:
+            bar_colors.append(color_young)
 
     male_sum = gu_df[gu_df['성별'] == '남자']['인구수'].sum()
     female_sum = gu_df[gu_df['성별'] == '여자']['인구수'].sum()
@@ -99,14 +106,7 @@ with tab1:
             hoverinfo='label+value+percent'
         )
         fig_gender.update_layout(
-            showlegend=True,
-            legend=dict(
-                orientation="v",
-                yanchor="middle",
-                y=0.5,
-                xanchor="right",
-                x=1.1
-            ),
+            showlegend=False,
             margin=dict(l=30, r=30, t=30, b=30),
             height=270
         )
