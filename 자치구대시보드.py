@@ -308,39 +308,6 @@ with tab1:
     st.plotly_chart(fig_household, use_container_width=True)
 
 
-    # ------------------------ 초/중/고 학교 수 시각화: tab3 (통합) ------------------------
-    st.markdown("### 🏫 초·중·고 학교 수")
-    df_school = pd.read_csv("district_data_combined.csv", na_values="NA")
-    df_school.rename(columns={df_school.columns[0]: "자치구"}, inplace=True)
-    df_school.columns = df_school.columns.str.strip()
-    if selected_gu not in df_school["자치구"].values:
-        st.warning("해당 자치구의 학교 수 데이터가 없습니다.")
-    else:
-        row = df_school[df_school["자치구"] == selected_gu].iloc[0]
-        elementary = int(row['초등학교']) if pd.notna(row['초등학교']) else 0
-        middle = int(row['중학교']) if pd.notna(row['중학교']) else 0
-        high = int(row['고등학교']) if pd.notna(row['고등학교']) else 0
-        card_style = """
-            <div style="
-                padding: 35px;
-                background-color: #f8f9fa;
-                border: 1px solid #ddd;
-                border-radius: 18px;
-                text-align: center;
-                font-size: 24px;
-                line-height: 1.5;
-                box-shadow: 0px 2px 12px #f0f0f0;">
-                <strong>{title}</strong><br>
-                <span style='font-size: 48px; color: #28a745;'><strong>{value}</strong>개</span>
-            </div>
-        """
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(card_style.format(title="초등학교", value=elementary), unsafe_allow_html=True)
-        with col2:
-            st.markdown(card_style.format(title="중학교", value=middle), unsafe_allow_html=True)
-        with col3:
-            st.markdown(card_style.format(title="고등학교", value=high), unsafe_allow_html=True)
 
 
 with tab2:
@@ -470,6 +437,41 @@ with tab2:
     </div>
     """
     st.markdown(card_html, unsafe_allow_html=True)
+    st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
+
+    # ------------------------ 초/중/고 학교 수 시각화: tab2 (이동) ------------------------
+    st.markdown("### 🏫 초·중·고 학교 수")
+    df_school = pd.read_csv("district_data_combined.csv", na_values="NA")
+    df_school.rename(columns={df_school.columns[0]: "자치구"}, inplace=True)
+    df_school.columns = df_school.columns.str.strip()
+    if selected_gu not in df_school["자치구"].values:
+        st.warning("해당 자치구의 학교 수 데이터가 없습니다.")
+    else:
+        row = df_school[df_school["자치구"] == selected_gu].iloc[0]
+        elementary = int(row['초등학교']) if pd.notna(row['초등학교']) else 0
+        middle = int(row['중학교']) if pd.notna(row['중학교']) else 0
+        high = int(row['고등학교']) if pd.notna(row['고등학교']) else 0
+        card_style = """
+            <div style="
+                padding: 35px;
+                background-color: #f8f9fa;
+                border: 1px solid #ddd;
+                border-radius: 18px;
+                text-align: center;
+                font-size: 24px;
+                line-height: 1.5;
+                box-shadow: 0px 2px 12px #f0f0f0;">
+                <strong>{title}</strong><br>
+                <span style='font-size: 48px; color: #28a745;'><strong>{value}</strong>개</span>
+            </div>
+        """
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(card_style.format(title="초등학교", value=elementary), unsafe_allow_html=True)
+        with col2:
+            st.markdown(card_style.format(title="중학교", value=middle), unsafe_allow_html=True)
+        with col3:
+            st.markdown(card_style.format(title="고등학교", value=high), unsafe_allow_html=True)
 with tab3:
     # ------------------------ 만족도 분석(항목 선택 ~ 문항 테이블): tab3 ------------------------
     melted = df.melt(id_vars='자치구', var_name='문항', value_name='원점수')
