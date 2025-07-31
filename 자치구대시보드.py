@@ -8,9 +8,7 @@ from datetime import datetime
 
 with st.sidebar:
     # ... (기존 사이드바 구성 요소들)
-    st.markdown("<div style='flex:1'></div>", unsafe_allow_html=True)  # 여백(공간) 확보용, optional
-    st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)  # 로고 위 추가 여백(필요시)
-    st.image("LIBSCOPElogo.jpeg", width=100)
+    pass
 
 st.set_page_config(page_title="서울시 도서관 대시보드", layout="wide")
 st.title("📊 서울시 자치구별 현황")
