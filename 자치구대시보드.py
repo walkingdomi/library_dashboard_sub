@@ -6,8 +6,10 @@ from streamlit_echarts import st_echarts
 import requests
 from datetime import datetime 
 
+with st.sidebar:
+    st.image("LIBSCOPElogo.jpeg", width=100)
+
 st.set_page_config(page_title="서울시 도서관 대시보드", layout="wide")
-st.image("LIBSCOPElogo.jpeg", width=200)
 st.title("📊 서울시 자치구별 현황")
 
 # 자치구 코드 ↔ 이름 매핑
