@@ -22,6 +22,40 @@ gu_dict = {
 }
 reverse_gu_dict = {v: k for k, v in gu_dict.items()}
 
+# 자치구명 → 세부지역 코드 매핑 (도서관정보나루용)
+dtl_region_dict = {
+    '종로구': 11010,
+    '중구': 11020,
+    '용산구': 11030,
+    '성동구': 11040,
+    '광진구': 11050,
+    '동대문구': 11060,
+    '중랑구': 11070,
+    '성북구': 11080,
+    '강북구': 11090,
+    '도봉구': 11100,
+    '노원구': 11110,
+    '은평구': 11120,
+    '서대문구': 11130,
+    '마포구': 11140,
+    '양천구': 11150,
+    '강서구': 11160,
+    '구로구': 11170,
+    '금천구': 11180,
+    '영등포구': 11190,
+    '동작구': 11200,
+    '관악구': 11210,
+    '서초구': 11220,
+    '강남구': 11230,
+    '송파구': 11240,
+    '강동구': 11250
+}
+
+# Validate selected_gu mapping
+if 'selected_gu' in locals() and selected_gu not in dtl_region_dict:
+    st.error(f"선택한 자치구 '{selected_gu}'에 대한 지역 코드가 없습니다.")
+    st.stop()
+
 # 파일 불러오기
 pop_df = pd.read_csv("district_age_gender_population.csv")
 xlsx_path = "2024_Seoul_Library_User_Survey_data.csv"
@@ -30,12 +64,14 @@ df = pd.read_csv(xlsx_path, encoding="utf-8-sig")
 # 자치구 선택 관련 코드(pop_df 로드 이후)
 gu_list = sorted(pop_df['자치구'].unique())
 selected_gu = st.selectbox("자치구 선택", gu_list)
+dtl_code = dtl_region_dict.get(selected_gu, 11010)
 selected_gu_code = reverse_gu_dict[selected_gu]
 
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "👥 인구통계",
     "📚 문화지표",
-    "🎯 성과조사"
+    "🎯 성과조사",
+    "📖 도서관정보나루"
 ])
 
 
@@ -622,3 +658,209 @@ with tab3:
         height=550
     )
     st.plotly_chart(fig_ab, use_container_width=True)
+
+
+with tab4:
+    # 세션 상태 초기화
+    if "run_query" not in st.session_state:
+        st.session_state["run_query"] = False
+
+    def trigger_query():
+        st.session_state["run_query"] = True
+    # 제목 위 공백 스페이서
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='margin-left:24px;'><span style='font-size:2rem; font-weight:bold; color:#000;'>📖 {selected_gu} 도서관 정보 제공 현황</span></div>",
+        unsafe_allow_html=True
+    )
+    api_key = "362a1492b8d6b4f19878c296012fe91abf8fd944c8cb84920e8c47882c694f9a"
+    region_code = 11  # 서울특별시
+    url = f"http://data4library.kr/api/libSrch?authKey={api_key}&region={region_code}&dtl_region={dtl_code}&format=json&pageSize=50"
+    lib_count = 0
+    try:
+        r = requests.get(url, timeout=5)
+        r.raise_for_status()
+        data = r.json()
+        libs = data.get("response", {}).get("libs", [])
+        lib_count = len(libs)
+        # 버퍼 파일에서 전체 도서관 수 계산
+        df_buffer = pd.read_csv("Seoul_Public_Library_2km_Buffer.csv", encoding="utf-8-sig")
+        # 선택된 자치구의 도서관명 중복 제거 후 고유 개수 카운팅
+        unique_libs = df_buffer[df_buffer["자치구"] == selected_gu]["도서관명"].drop_duplicates()
+        total_lib_count = unique_libs.nunique()
+        card_html = f'''
+        <div style="
+            width:calc(100% - 48px);
+            margin:0 24px;
+            padding:16px 10px;
+            background-color:#f8f9fa;
+            border:2px solid #d3d3d3;
+            border-radius:18px;
+            text-align:center;
+            display:flex; flex-direction:column; justify-content:center;
+            height:320px; box-sizing:border-box;">
+            <span style="font-size:1.84rem; font-weight:bold; color:#000; line-height:1.2; display:inline-block; text-align:center;">
+                {selected_gu} 도서관<br>정보 제공 현황
+            </span>
+            <span style="display:block; margin-top:4px;">
+              <span style="font-size:6.75rem; font-weight:bold; color:#ffae00;">{total_lib_count}</span>
+              <span style="font-size:2.5rem; color:#000;">/{lib_count}관</span>
+            </span>
+        </div>
+        '''
+        # 카드와 목록을 좌우로 배치
+        list_df = pd.DataFrame(unique_libs, columns=["도서관명"])
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.markdown(card_html, unsafe_allow_html=True)
+        with col2:
+            st.markdown("<div style='margin-left:24px; padding-top:16px;'>", unsafe_allow_html=True)
+            st.dataframe(list_df, use_container_width=True, height=320)
+            st.markdown("</div>", unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"API 요청 또는 데이터 처리 실패: {e}")
+
+    # ------------------------ 인기 대출 도서 조회 UI ------------------------
+    col_title, col_button = st.columns([5, 1])
+    with col_title:
+        st.markdown("### 📚 인기 대출 도서 조회")
+    with col_button:
+        st.button("📊 조회", on_click=trigger_query)
+
+    # 필터 드롭다운 그룹
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        gender_option = st.selectbox("성별", ["전체", "남자", "여자"], key="gender")
+    with col2:
+        age_option = st.selectbox("연령대", ["전체", "10", "20", "30", "40", "50", "60"], key="age")
+    with col3:
+        kdc_dict = {
+            "전체": "",
+            "총류": "0",
+            "철학": "1",
+            "종교": "2",
+            "사회과학": "3",
+            "자연과학": "4",
+            "기술과학": "5",
+            "예술": "6",
+            "언어": "7",
+            "문학": "8",
+            "역사": "9"
+        }
+        kdc_label = st.selectbox("주제(KDC)", list(kdc_dict.keys()), key="kdc_label")
+    with col4:
+        period_option = st.selectbox("기간", ["1주일", "2주일", "1개월", "3개월", "6개월", "1년"], key="period")
+
+    from datetime import timedelta
+    period_days = {
+        "1주일": 7,
+        "2주일": 14,
+        "1개월": 30,
+        "3개월": 90,
+        "6개월": 180,
+        "1년": 365
+    }
+    # start_date, end_date will be re-computed below after getting period_option from session_state
+
+    # 인기 대출 도서 조회 로직을 버튼 클릭 시에만 실행
+    if st.session_state.get("run_query", False) is True:
+        # 🚨 조회 후 즉시 False로 바꿔서 드롭다운 선택 시 재실행 방지
+        st.session_state["run_query"] = False
+
+        # Retrieve filter values from session_state
+        gender_option = st.session_state["gender"]
+        age_option = st.session_state["age"]
+        kdc_label = st.session_state["kdc_label"]
+        period_option = st.session_state["period"]
+        kdc_option = kdc_dict[kdc_label]
+
+        start_date = (datetime.now() - timedelta(days=period_days[period_option])).strftime("%Y-%m-%d")
+        end_date = datetime.now().strftime("%Y-%m-%d")
+
+        # 이하 기존 코드 유지 (loan_url, loan_params 설정, API 요청 및 카드 렌더링)
+        loan_url = "http://data4library.kr/api/loanItemSrch"
+        dynamic_dtl_code = dtl_region_dict.get(selected_gu, 11010)
+        loan_params = {
+            "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+            "startDt": start_date,
+            "endDt": end_date,
+            "region": "11",
+            "dtl_region": str(dynamic_dtl_code),
+            "addCode": "0",
+            "pageNo": "1",
+            "pageSize": "10",
+            "format": "xml"
+        }
+
+        if gender_option == "남자":
+            loan_params["gender"] = "1"
+        elif gender_option == "여자":
+            loan_params["gender"] = "2"
+
+        if age_option != "전체":
+            loan_params["age"] = age_option
+
+        if kdc_option:
+            loan_params["kdc"] = kdc_option
+
+        # 카드용 스타일
+        st.markdown("""
+            <style>
+            .card {
+                background-color: #fefefe;
+                padding: 1rem;
+                border-radius: 10px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+                text-align: center;
+                margin-bottom: 1rem;
+                min-height: 180px;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                flex-grow: 1;
+            }
+            .rank {
+                font-size: 1.1rem;
+                font-weight: bold;
+                color: #333;
+            }
+            .title {
+                font-size: 1.05rem;
+                font-weight: 600;
+                margin: 0.5rem 0;
+                color: #222;
+            }
+            .loan {
+                color: #007BFF;
+                font-weight: 500;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        # API 요청
+        import xml.etree.ElementTree as ET
+        loan_response = requests.get(loan_url, params=loan_params)
+        if loan_response.status_code == 200:
+            root = ET.fromstring(loan_response.content)
+            docs = root.findall(".//doc")
+            if not docs:
+                st.warning("도서 정보가 없습니다.")
+            else:
+                cols = st.columns(5)
+                for idx, doc in enumerate(docs[:10]):
+                    col = cols[idx % 5]
+                    with col:
+                        with st.container():
+                            title = doc.findtext("bookname")
+                            card_html = f"""
+                                <div class='card'>
+                                    <div class='rank'>🥇 {idx + 1}위</div>
+                                    <div class='title'>{title or '제목 없음'}</div>
+                                    <div class='loan'>📚 {doc.findtext('loan_count') or '0'}건 대출</div>
+                                </div>
+                            """
+                            st.markdown(card_html, unsafe_allow_html=True)
+                    if (idx + 1) % 5 == 0 and idx < 9:
+                        cols = st.columns(5)
+        else:
+            st.error(f"❌ API 요청 실패: {loan_response.status_code}")
