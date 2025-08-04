@@ -689,8 +689,12 @@ with tab4:
     from dateutil.relativedelta import relativedelta
     from collections import Counter
 
-    @st.cache_data(ttl=86400, show_spinner=False)
-    def fetch_keyword_trend():
+    # --- 키워드 트렌드 API 캐싱 ---
+    def fetch_keyword_trend_cached():
+        cache_key = "keyword_trend_last12m"
+        if cache_key in st.session_state:
+            return st.session_state[cache_key]
+        from dateutil.relativedelta import relativedelta
         keyword_trend = {}
         for i in range(12):
             month_str = (datetime.now() - relativedelta(months=11 - i)).strftime("%Y-%m")
@@ -708,9 +712,10 @@ with tab4:
                 keyword_trend[month_str] = [w.text for w in words if w is not None]
             except:
                 keyword_trend[month_str] = []
+        st.session_state[cache_key] = keyword_trend
         return keyword_trend
 
-    keyword_trend = fetch_keyword_trend()
+    keyword_trend = fetch_keyword_trend_cached()
 
     # 상위 키워드 10개 추출
     all_keywords = sum(keyword_trend.values(), [])
@@ -782,54 +787,63 @@ with tab4:
         f"<div style='margin-left:24px;'><span style='font-size:2rem; font-weight:bold; color:#000;'>📖 {selected_gu} 도서관 정보 제공 현황</span></div>",
         unsafe_allow_html=True
     )
-    api_key = "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e"
-    region_code = 11  # 서울특별시
-    url = f"http://data4library.kr/api/libSrch?authKey={api_key}&region={region_code}&dtl_region={dtl_code}&format=json&pageSize=50"
-    lib_count = 0
-    try:
-        r = requests.get(url, timeout=5)
-        r.raise_for_status()
-        data = r.json()
-        libs = data.get("response", {}).get("libs", [])
-        lib_count = len(libs)
-        # 버퍼 파일에서 전체 도서관 수 계산
-        df_buffer = pd.read_csv("Seoul_Public_Library_2km_Buffer.csv", encoding="utf-8-sig")
-        # 선택된 자치구의 도서관명 중복 제거 후 고유 개수 카운팅
-        unique_libs = df_buffer[df_buffer["자치구"] == selected_gu]["도서관명"].drop_duplicates()
-        total_lib_count = unique_libs.nunique()
-        card_html = f'''
-        <div style="
-            width:calc(100% - 48px);
-            margin:0 24px;
-            padding:16px 10px;
-            background-color:#f8f9fa;
-            border:2px solid #d3d3d3;
-            border-radius:18px;
-            text-align:center;
-            display:flex; flex-direction:column; justify-content:center;
-            height:320px; box-sizing:border-box;">
-            <span style="font-size:1.84rem; font-weight:bold; color:#000; line-height:1.2; display:inline-block; text-align:center;">
-                {selected_gu} 공공도서관<br>정보공개 현황
-            </span>
-            <span style="display:block; margin-top:4px;">
-              <span style="display: inline-flex; align-items: baseline;">
-                <span style="font-size:6.75rem; font-weight:bold; color:#ffae00;">{total_lib_count}</span>
-                <span style="font-size:5.5rem; font-weight:bold; color:#ffae00;">관</span>
-              </span>
-            </span>
-        </div>
-        '''
-        # 카드와 목록을 좌우로 배치
-        list_df = pd.DataFrame(unique_libs, columns=["도서관명"])
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            st.markdown(card_html, unsafe_allow_html=True)
-        with col2:
-            st.markdown("<div style='margin-left:24px; padding-top:16px;'>", unsafe_allow_html=True)
+    # --- 도서관 정보 제공 현황 API 캐싱 ---
+    def fetch_lib_info(selected_gu, dtl_code):
+        cache_key = f"libinfo_{selected_gu}_{dtl_code}"
+        if cache_key in st.session_state:
+            return st.session_state[cache_key]
+        api_key = "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e"
+        region_code = 11  # 서울특별시
+        url = f"http://data4library.kr/api/libSrch?authKey={api_key}&region={region_code}&dtl_region={dtl_code}&format=json&pageSize=50"
+        try:
+            r = requests.get(url, timeout=5)
+            r.raise_for_status()
+            data = r.json()
+            libs = data.get("response", {}).get("libs", [])
+            # 버퍼 파일에서 전체 도서관 수 계산
+            df_buffer = pd.read_csv("Seoul_Public_Library_2km_Buffer.csv", encoding="utf-8-sig")
+            unique_libs = df_buffer[df_buffer["자치구"] == selected_gu]["도서관명"].drop_duplicates()
+            total_lib_count = unique_libs.nunique()
+            list_df = pd.DataFrame(unique_libs, columns=["도서관명"])
+            st.session_state[cache_key] = (total_lib_count, list_df)
+            return total_lib_count, list_df
+        except Exception as e:
+            st.session_state[cache_key] = (None, None)
+            return None, None
+
+    total_lib_count, list_df = fetch_lib_info(selected_gu, dtl_code)
+    card_html = f'''
+    <div style="
+        width:calc(100% - 48px);
+        margin:0 24px;
+        padding:16px 10px;
+        background-color:#f8f9fa;
+        border:2px solid #d3d3d3;
+        border-radius:18px;
+        text-align:center;
+        display:flex; flex-direction:column; justify-content:center;
+        height:320px; box-sizing:border-box;">
+        <span style="font-size:1.84rem; font-weight:bold; color:#000; line-height:1.2; display:inline-block; text-align:center;">
+            {selected_gu} 공공도서관<br>정보공개 현황
+        </span>
+        <span style="display:block; margin-top:4px;">
+          <span style="display: inline-flex; align-items: baseline;">
+            <span style="font-size:6.75rem; font-weight:bold; color:#ffae00;">{total_lib_count if total_lib_count is not None else "?"}</span>
+            <span style="font-size:5.5rem; font-weight:bold; color:#ffae00;">관</span>
+          </span>
+        </span>
+    </div>
+    '''
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.markdown(card_html, unsafe_allow_html=True)
+    with col2:
+        st.markdown("<div style='margin-left:24px; padding-top:16px;'>", unsafe_allow_html=True)
+        if list_df is not None:
             st.dataframe(list_df, use_container_width=True, height=320)
-            st.markdown("</div>", unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"API 요청 또는 데이터 처리 실패: {e}")
+        else:
+            st.warning("도서관 정보 데이터가 없습니다.")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # ------------------------ 인기 대출 도서 조회 UI ------------------------
     col_title, col_button = st.columns([5, 1])
@@ -879,31 +893,43 @@ with tab4:
     start_date = (datetime.now() - timedelta(days=period_days[period_option])).strftime("%Y-%m-%d")
     end_date = datetime.now().strftime("%Y-%m-%d")
 
-    # 이하 기존 코드 유지 (loan_url, loan_params 설정, API 요청 및 카드 렌더링)
-    loan_url = "http://data4library.kr/api/loanItemSrch"
-    dynamic_dtl_code = dtl_region_dict.get(selected_gu, 11010)
-    loan_params = {
-        "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
-        "startDt": start_date,
-        "endDt": end_date,
-        "region": "11",
-        "dtl_region": str(dynamic_dtl_code),
-        "addCode": "0",
-        "pageNo": "1",
-        "pageSize": "10",
-        "format": "xml"
-    }
-
-    if gender_option == "남자":
-        loan_params["gender"] = "1"
-    elif gender_option == "여자":
-        loan_params["gender"] = "2"
-
-    if age_option != "전체":
-        loan_params["age"] = age_option
-
-    if kdc_option:
-        loan_params["kdc"] = kdc_option
+    # --- 인기 대출 도서 API 캐싱 ---
+    def fetch_loan_docs(selected_gu, start_date, end_date, gender_option, age_option, kdc_option):
+        dynamic_dtl_code = dtl_region_dict.get(selected_gu, 11010)
+        cache_key = f"kdc_loan_{selected_gu}_{start_date}_{end_date}_{gender_option}_{age_option}_{kdc_option}"
+        if cache_key in st.session_state:
+            return st.session_state[cache_key]
+        loan_url = "http://data4library.kr/api/loanItemSrch"
+        loan_params = {
+            "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+            "startDt": start_date,
+            "endDt": end_date,
+            "region": "11",
+            "dtl_region": str(dynamic_dtl_code),
+            "addCode": "0",
+            "pageNo": "1",
+            "pageSize": "10",
+            "format": "xml"
+        }
+        if gender_option == "남자":
+            loan_params["gender"] = "1"
+        elif gender_option == "여자":
+            loan_params["gender"] = "2"
+        if age_option != "전체":
+            loan_params["age"] = age_option
+        if kdc_option:
+            loan_params["kdc"] = kdc_option
+        import xml.etree.ElementTree as ET
+        try:
+            loan_response = requests.get(loan_url, params=loan_params, timeout=5)
+            loan_response.raise_for_status()
+            root = ET.fromstring(loan_response.content)
+            docs = root.findall(".//doc")
+            st.session_state[cache_key] = docs
+            return docs
+        except Exception:
+            st.session_state[cache_key] = []
+            return []
 
     # 카드용 스타일
     st.markdown("""
@@ -939,33 +965,26 @@ with tab4:
         }
         </style>
     """, unsafe_allow_html=True)
-    # API 요청
-    import xml.etree.ElementTree as ET
-    loan_response = requests.get(loan_url, params=loan_params)
-    if loan_response.status_code == 200:
-        root = ET.fromstring(loan_response.content)
-        docs = root.findall(".//doc")
-        if not docs:
-            st.warning("도서 정보가 없습니다.")
-        else:
-            cols = st.columns(5)
-            for idx, doc in enumerate(docs[:10]):
-                col = cols[idx % 5]
-                with col:
-                    with st.container():
-                        title = doc.findtext("bookname")
-                        card_html = f"""
-                            <div class='card'>
-                                <div class='rank'>🥇 {idx + 1}위</div>
-                                <div class='title'>{title or '제목 없음'}</div>
-                                <div class='loan'>📚 {doc.findtext('loan_count') or '0'}건 대출</div>
-                            </div>
-                        """
-                        st.markdown(card_html, unsafe_allow_html=True)
-                if (idx + 1) % 5 == 0 and idx < 9:
-                    cols = st.columns(5)
+    docs = fetch_loan_docs(selected_gu, start_date, end_date, gender_option, age_option, kdc_option)
+    if docs is None or len(docs) == 0:
+        st.warning("도서 정보가 없습니다.")
     else:
-        st.error(f"❌ API 요청 실패: {loan_response.status_code}")
+        cols = st.columns(5)
+        for idx, doc in enumerate(docs[:10]):
+            col = cols[idx % 5]
+            with col:
+                with st.container():
+                    title = doc.findtext("bookname")
+                    card_html = f"""
+                        <div class='card'>
+                            <div class='rank'>🥇 {idx + 1}위</div>
+                            <div class='title'>{title or '제목 없음'}</div>
+                            <div class='loan'>📚 {doc.findtext('loan_count') or '0'}건 대출</div>
+                        </div>
+                    """
+                    st.markdown(card_html, unsafe_allow_html=True)
+            if (idx + 1) % 5 == 0 and idx < 9:
+                cols = st.columns(5)
 
     # ------------------------ 인기 도서 주제분류 분포 시각화 ------------------------
     st.markdown(f"### 🗂️ {selected_gu} 인기 대출 도서 KDC 분포 ")
@@ -1002,84 +1021,94 @@ with tab4:
     else:
         st.info("주제분류(class_nm) 정보가 없습니다.")
 
-    # ------------------------ 연령별 독서량 시각화 ------------------------
+    # --- 연령별 독서량 API 캐싱 ---
     st.markdown(f"### 📈 2024년도 {selected_gu} 연령별 독서량 비교")
-    readqt_url = "http://data4library.kr/api/readQt"
-    readqt_params = {
-        "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
-        "region": "11",
-        "dtl_region": str(dtl_code),
-        "year": str(datetime.now().year - 1),
-        "format": "xml"
-    }
-    try:
-        readqt_response = requests.get(readqt_url, params=readqt_params, timeout=5)
-        readqt_response.raise_for_status()
+    def fetch_readqt(selected_gu, dtl_code):
+        year = str(datetime.now().year - 1)
+        cache_key = f"readqt_{selected_gu}_{dtl_code}_{year}"
+        if cache_key in st.session_state:
+            return st.session_state[cache_key]
+        readqt_url = "http://data4library.kr/api/readQt"
+        readqt_params = {
+            "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+            "region": "11",
+            "dtl_region": str(dtl_code),
+            "year": year,
+            "format": "xml"
+        }
         import xml.etree.ElementTree as ET
-        root = ET.fromstring(readqt_response.content)
-        result = root.findall(".//result")
-        if not result:
-            st.warning("해당 자치구의 독서량 데이터가 없습니다.")
-        else:
-            age_list = []
-            quantity_list = []
-            rate_list = []
-            for r in result:
-                age = r.findtext("age")
-                quantity = r.findtext("quantity")
-                rate = r.findtext("rate")
-                if age and quantity and rate:
-                    age_list.append(age)
-                    quantity_list.append(float(quantity))
-                    rate_list.append(float(rate) * 100)  # 독서율을 %로 변환
+        try:
+            readqt_response = requests.get(readqt_url, params=readqt_params, timeout=5)
+            readqt_response.raise_for_status()
+            root = ET.fromstring(readqt_response.content)
+            result = root.findall(".//result")
+            st.session_state[cache_key] = result
+            return result
+        except Exception:
+            st.session_state[cache_key] = []
+            return []
 
-            # 📌 연령대 순서 정렬
-            age_order = [
-                "전체", "영유아", "유아", "초등", "청소년",
-                "20대", "30대", "40대", "50대", "60대 이상"
-            ]
-            sorted_data = sorted(
-                zip(age_list, quantity_list, rate_list),
-                key=lambda x: age_order.index(x[0]) if x[0] in age_order else 99
-            )
-            age_list, quantity_list, rate_list = zip(*sorted_data)
+    result = fetch_readqt(selected_gu, dtl_code)
+    if not result:
+        st.warning("해당 자치구의 독서량 데이터가 없습니다.")
+    else:
+        age_list = []
+        quantity_list = []
+        rate_list = []
+        for r in result:
+            age = r.findtext("age")
+            quantity = r.findtext("quantity")
+            rate = r.findtext("rate")
+            if age and quantity and rate:
+                age_list.append(age)
+                quantity_list.append(float(quantity))
+                rate_list.append(float(rate) * 100)  # 독서율을 %로 변환
 
-            # Update first label "전체" to "전체 평균"
-            age_list = ["전체 평균" if age == "전체" else age for age in age_list]
-            quantity_dict = dict(zip(age_list, quantity_list))
-            # Remove "전체 평균" from bar chart, but keep for average line
-            filtered_ages = [age for age in age_list if age != "전체 평균"]
-            filtered_quantities = [quantity_dict[age] for age in filtered_ages]
-            # Bar colors: all default blue
-            bar_colors = ["#1f77b4"] * len(filtered_ages)
+        # 📌 연령대 순서 정렬
+        age_order = [
+            "전체", "영유아", "유아", "초등", "청소년",
+            "20대", "30대", "40대", "50대", "60대 이상"
+        ]
+        sorted_data = sorted(
+            zip(age_list, quantity_list, rate_list),
+            key=lambda x: age_order.index(x[0]) if x[0] in age_order else 99
+        )
+        age_list, quantity_list, rate_list = zip(*sorted_data)
 
-            import plotly.graph_objects as go
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=filtered_ages,
-                y=filtered_quantities,
-                name="독서량 (권)",
-                marker_color=bar_colors,
-                text=[round(q, 1) for q in filtered_quantities],
-                textposition="outside"
-            ))
-            # Add 전체 평균 dotted horizontal line at 18.2
-            fig.add_hline(
-                y=18.2,
-                line_dash="dot",
-                line_color="#ff5733",
-                annotation_text="전체 평균",
-                annotation_position="top left",
-                annotation_font_color="#ff5733"
-            )
-            fig.update_layout(
-                xaxis_title="연령대",
-                yaxis=dict(title="독서량 (권)", range=[0, max(filtered_quantities) + 10]),
-                legend=dict(orientation="h", y=-0.3),
-                height=550
-            )
-            st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"API 요청 또는 데이터 처리 실패: {e}")
+        # Update first label "전체" to "전체 평균"
+        age_list = ["전체 평균" if age == "전체" else age for age in age_list]
+        quantity_dict = dict(zip(age_list, quantity_list))
+        # Remove "전체 평균" from bar chart, but keep for average line
+        filtered_ages = [age for age in age_list if age != "전체 평균"]
+        filtered_quantities = [quantity_dict[age] for age in filtered_ages]
+        # Bar colors: all default blue
+        bar_colors = ["#1f77b4"] * len(filtered_ages)
+
+        import plotly.graph_objects as go
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=filtered_ages,
+            y=filtered_quantities,
+            name="독서량 (권)",
+            marker_color=bar_colors,
+            text=[round(q, 1) for q in filtered_quantities],
+            textposition="outside"
+        ))
+        # Add 전체 평균 dotted horizontal line at 18.2
+        fig.add_hline(
+            y=18.2,
+            line_dash="dot",
+            line_color="#ff5733",
+            annotation_text="전체 평균",
+            annotation_position="top left",
+            annotation_font_color="#ff5733"
+        )
+        fig.update_layout(
+            xaxis_title="연령대",
+            yaxis=dict(title="독서량 (권)", range=[0, max(filtered_quantities) + 10]),
+            legend=dict(orientation="h", y=-0.3),
+            height=550
+        )
+        st.plotly_chart(fig, use_container_width=True)
         
    
