@@ -661,12 +661,83 @@ with tab3:
 
 
 with tab4:
-    # 세션 상태 초기화
-    if "run_query" not in st.session_state:
-        st.session_state["run_query"] = False
+    # ------------------------ 키워드 순위 테이블 (최근 12개월) ------------------------
+    st.markdown("### 🗂️ 서울시 인기 키워드 TOP 10")
 
-    def trigger_query():
-        st.session_state["run_query"] = True
+    from dateutil.relativedelta import relativedelta
+    from collections import Counter
+
+    keyword_trend = {}
+    for i in range(12):
+        month_str = (datetime.now() - relativedelta(months=11 - i)).strftime("%Y-%m")
+        url = "http://data4library.kr/api/monthlyKeywords"
+        params = {
+            "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+            "month": month_str
+        }
+        try:
+            res = requests.get(url, params=params, timeout=5)
+            res.raise_for_status()
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(res.content)
+            words = root.findall(".//keyword/word")
+            keyword_trend[month_str] = [w.text for w in words if w is not None]
+        except:
+            keyword_trend[month_str] = []
+
+    # 상위 키워드 10개 추출
+    all_keywords = sum(keyword_trend.values(), [])
+    top10 = [kw for kw, _ in Counter(all_keywords).most_common(10)]
+
+    # 피벗 테이블 생성
+    heat_df = pd.DataFrame(columns=["월", "키워드", "빈도"])
+    for month, words in keyword_trend.items():
+        for kw in top10:
+            count = words.count(kw)
+            heat_df = pd.concat([
+                heat_df,
+                pd.DataFrame([{"월": month, "키워드": kw, "빈도": count}])
+            ], ignore_index=True)
+    pivot_df = heat_df.pivot(index="키워드", columns="월", values="빈도").fillna(0)
+
+    # 1. 순위 역순 정렬 방지 (1위가 위로)
+    rank_table = pd.DataFrame(columns=["월", "순위", "키워드"])
+    for month, keywords in keyword_trend.items():
+        for i, kw in enumerate(keywords[:10]):
+            rank_table = pd.concat([
+                rank_table,
+                pd.DataFrame([{"월": month, "순위": f"{i+1}위", "키워드": kw}])
+            ], ignore_index=True)
+    rank_table['순위'] = pd.Categorical(rank_table['순위'],
+                                        categories=[f"{i}위" for i in range(1, 11)],
+                                        ordered=True)
+    pivot_rank_table = rank_table.pivot(index="순위", columns="월", values="키워드")
+    pivot_rank_table = pivot_rank_table.sort_index()
+
+    # 고유 키워드 색상 매핑 (2회 이상 등장한 키워드만 색 지정)
+    import seaborn as sns
+    from collections import Counter
+    all_ranked_keywords = rank_table["키워드"].dropna().tolist()
+    keyword_counts = Counter(all_ranked_keywords)
+    recurring_keywords = [kw for kw, count in keyword_counts.items() if count >= 2]
+    palette = sns.color_palette("hls", len(recurring_keywords)).as_hex()
+    color_map = dict(zip(recurring_keywords, palette))
+
+    def highlight_keyword(val):
+        if pd.isna(val):
+            return ''
+        # 해당 키워드가 전체 데이터에서 두 번 이상 등장하면 색상 지정
+        if all_ranked_keywords.count(val) >= 2:
+            color = color_map.get(val, "#ffffff")
+            return f'background-color: {color}; color: black;'
+        else:
+            return 'background-color: white; color: black;'
+
+    styled_pivot = pivot_rank_table.style.applymap(highlight_keyword)
+
+    # 3. 출력
+    st.dataframe(styled_pivot, use_container_width=True)
+
     # 제목 위 공백 스페이서
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
     st.markdown(
@@ -725,14 +796,14 @@ with tab4:
     with col_title:
         st.markdown("### 📚 인기 대출 도서 조회")
     with col_button:
-        st.button("📊 조회", on_click=trigger_query)
+        st.empty()  # 버튼 제거
 
     # 필터 드롭다운 그룹
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        gender_option = st.selectbox("성별", ["전체", "남자", "여자"], key="gender")
+        gender_option = st.selectbox("성별", ["전체", "남자", "여자"], index=0, key="gender")
     with col2:
-        age_option = st.selectbox("연령대", ["전체", "10", "20", "30", "40", "50", "60"], key="age")
+        age_option = st.selectbox("연령대", ["전체", "10", "20", "30", "40", "50", "60"], index=0, key="age")
     with col3:
         kdc_dict = {
             "전체": "",
@@ -747,9 +818,9 @@ with tab4:
             "문학": "8",
             "역사": "9"
         }
-        kdc_label = st.selectbox("주제(KDC)", list(kdc_dict.keys()), key="kdc_label")
+        kdc_label = st.selectbox("주제(KDC)", list(kdc_dict.keys()), index=0, key="kdc_label")
     with col4:
-        period_option = st.selectbox("기간", ["1주일", "2주일", "1개월", "3개월", "6개월", "1년"], key="period")
+        period_option = st.selectbox("기간", ["1주일", "2주일", "1개월", "3개월", "6개월", "1년"], index=4, key="period")
 
     from datetime import timedelta
     period_days = {
@@ -762,105 +833,178 @@ with tab4:
     }
     # start_date, end_date will be re-computed below after getting period_option from session_state
 
-    # 인기 대출 도서 조회 로직을 버튼 클릭 시에만 실행
-    if st.session_state.get("run_query", False) is True:
-        # 🚨 조회 후 즉시 False로 바꿔서 드롭다운 선택 시 재실행 방지
-        st.session_state["run_query"] = False
+    # 기본값으로 조회 실행
+    # Retrieve filter values from widget selections
+    kdc_option = kdc_dict[kdc_label]
+    start_date = (datetime.now() - timedelta(days=period_days[period_option])).strftime("%Y-%m-%d")
+    end_date = datetime.now().strftime("%Y-%m-%d")
 
-        # Retrieve filter values from session_state
-        gender_option = st.session_state["gender"]
-        age_option = st.session_state["age"]
-        kdc_label = st.session_state["kdc_label"]
-        period_option = st.session_state["period"]
-        kdc_option = kdc_dict[kdc_label]
+    # 이하 기존 코드 유지 (loan_url, loan_params 설정, API 요청 및 카드 렌더링)
+    loan_url = "http://data4library.kr/api/loanItemSrch"
+    dynamic_dtl_code = dtl_region_dict.get(selected_gu, 11010)
+    loan_params = {
+        "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+        "startDt": start_date,
+        "endDt": end_date,
+        "region": "11",
+        "dtl_region": str(dynamic_dtl_code),
+        "addCode": "0",
+        "pageNo": "1",
+        "pageSize": "10",
+        "format": "xml"
+    }
 
-        start_date = (datetime.now() - timedelta(days=period_days[period_option])).strftime("%Y-%m-%d")
-        end_date = datetime.now().strftime("%Y-%m-%d")
+    if gender_option == "남자":
+        loan_params["gender"] = "1"
+    elif gender_option == "여자":
+        loan_params["gender"] = "2"
 
-        # 이하 기존 코드 유지 (loan_url, loan_params 설정, API 요청 및 카드 렌더링)
-        loan_url = "http://data4library.kr/api/loanItemSrch"
-        dynamic_dtl_code = dtl_region_dict.get(selected_gu, 11010)
-        loan_params = {
-            "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
-            "startDt": start_date,
-            "endDt": end_date,
-            "region": "11",
-            "dtl_region": str(dynamic_dtl_code),
-            "addCode": "0",
-            "pageNo": "1",
-            "pageSize": "10",
-            "format": "xml"
+    if age_option != "전체":
+        loan_params["age"] = age_option
+
+    if kdc_option:
+        loan_params["kdc"] = kdc_option
+
+    # 카드용 스타일
+    st.markdown("""
+        <style>
+        .card {
+            background-color: #fefefe;
+            padding: 1rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            text-align: center;
+            margin-bottom: 1rem;
+            min-height: 230px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            flex-grow: 1;
         }
-
-        if gender_option == "남자":
-            loan_params["gender"] = "1"
-        elif gender_option == "여자":
-            loan_params["gender"] = "2"
-
-        if age_option != "전체":
-            loan_params["age"] = age_option
-
-        if kdc_option:
-            loan_params["kdc"] = kdc_option
-
-        # 카드용 스타일
-        st.markdown("""
-            <style>
-            .card {
-                background-color: #fefefe;
-                padding: 1rem;
-                border-radius: 10px;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-                text-align: center;
-                margin-bottom: 1rem;
-                min-height: 180px;
-                height: 100%;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                flex-grow: 1;
-            }
-            .rank {
-                font-size: 1.1rem;
-                font-weight: bold;
-                color: #333;
-            }
-            .title {
-                font-size: 1.05rem;
-                font-weight: 600;
-                margin: 0.5rem 0;
-                color: #222;
-            }
-            .loan {
-                color: #007BFF;
-                font-weight: 500;
-            }
-            </style>
-        """, unsafe_allow_html=True)
-        # API 요청
-        import xml.etree.ElementTree as ET
-        loan_response = requests.get(loan_url, params=loan_params)
-        if loan_response.status_code == 200:
-            root = ET.fromstring(loan_response.content)
-            docs = root.findall(".//doc")
-            if not docs:
-                st.warning("도서 정보가 없습니다.")
-            else:
-                cols = st.columns(5)
-                for idx, doc in enumerate(docs[:10]):
-                    col = cols[idx % 5]
-                    with col:
-                        with st.container():
-                            title = doc.findtext("bookname")
-                            card_html = f"""
-                                <div class='card'>
-                                    <div class='rank'>🥇 {idx + 1}위</div>
-                                    <div class='title'>{title or '제목 없음'}</div>
-                                    <div class='loan'>📚 {doc.findtext('loan_count') or '0'}건 대출</div>
-                                </div>
-                            """
-                            st.markdown(card_html, unsafe_allow_html=True)
-                    if (idx + 1) % 5 == 0 and idx < 9:
-                        cols = st.columns(5)
+        .rank {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #333;
+        }
+        .title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            margin: 0.5rem 0;
+            color: #222;
+        }
+        .loan {
+            color: #007BFF;
+            font-weight: 500;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    # API 요청
+    import xml.etree.ElementTree as ET
+    loan_response = requests.get(loan_url, params=loan_params)
+    if loan_response.status_code == 200:
+        root = ET.fromstring(loan_response.content)
+        docs = root.findall(".//doc")
+        if not docs:
+            st.warning("도서 정보가 없습니다.")
         else:
-            st.error(f"❌ API 요청 실패: {loan_response.status_code}")
+            cols = st.columns(5)
+            for idx, doc in enumerate(docs[:10]):
+                col = cols[idx % 5]
+                with col:
+                    with st.container():
+                        title = doc.findtext("bookname")
+                        card_html = f"""
+                            <div class='card'>
+                                <div class='rank'>🥇 {idx + 1}위</div>
+                                <div class='title'>{title or '제목 없음'}</div>
+                                <div class='loan'>📚 {doc.findtext('loan_count') or '0'}건 대출</div>
+                            </div>
+                        """
+                        st.markdown(card_html, unsafe_allow_html=True)
+                if (idx + 1) % 5 == 0 and idx < 9:
+                    cols = st.columns(5)
+    else:
+        st.error(f"❌ API 요청 실패: {loan_response.status_code}")
+
+    # ------------------------ 연령별 독서량/독서율 시각화 ------------------------
+    st.markdown("### 📈 연령별 독서량 및 독서율")
+    readqt_url = "http://data4library.kr/api/readQt"
+    readqt_params = {
+        "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+        "region": "11",
+        "dtl_region": str(dtl_code),
+        "year": str(datetime.now().year - 1),
+        "format": "xml"
+    }
+    try:
+        readqt_response = requests.get(readqt_url, params=readqt_params, timeout=5)
+        readqt_response.raise_for_status()
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(readqt_response.content)
+        result = root.findall(".//result")
+        if not result:
+            st.warning("해당 자치구의 독서량/독서율 데이터가 없습니다.")
+        else:
+            age_list = []
+            quantity_list = []
+            rate_list = []
+            for r in result:
+                age = r.findtext("age")
+                quantity = r.findtext("quantity")
+                rate = r.findtext("rate")
+                if age and quantity and rate:
+                    age_list.append(age)
+                    quantity_list.append(float(quantity))
+                    rate_list.append(float(rate) * 100)  # 독서율을 %로 변환
+
+            # 📌 연령대 순서 정렬
+            age_order = [
+                "전체", "영유아", "유아", "초등", "청소년",
+                "20대", "30대", "40대", "50대", "60대 이상"
+            ]
+            sorted_data = sorted(
+                zip(age_list, quantity_list, rate_list),
+                key=lambda x: age_order.index(x[0]) if x[0] in age_order else 99
+            )
+            age_list, quantity_list, rate_list = zip(*sorted_data)
+
+            import plotly.graph_objects as go
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=age_list,
+                y=quantity_list,
+                name="독서량 (권)",
+                marker_color="#1f77b4",
+                text=[round(q, 1) for q in quantity_list],
+                textposition="outside"
+            ))
+            fig.add_trace(go.Scatter(
+                x=age_list,
+                y=rate_list,
+                name="독서율 (%)",
+                yaxis="y2",
+                mode="lines+markers",
+                line=dict(color="orange", width=3),
+                marker=dict(size=8)
+            ))
+            fig.update_layout(
+                title=f"{selected_gu} – 연령별 독서량 및 독서율",
+                xaxis_title="연령대",
+                yaxis=dict(title="독서량 (권)", range=[0, max(quantity_list) + 10]),
+                yaxis2=dict(
+                    title="독서율 (%)",
+                    overlaying="y",
+                    side="right",
+                    range=[0, max(rate_list) + 10],
+                    showgrid=False
+                ),
+                legend=dict(orientation="h", y=-0.3),
+                height=550
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"API 요청 또는 데이터 처리 실패: {e}")
+        
+    # ------------------------ 최근 12개월 이달의 키워드 추이 ------------------------
+   
