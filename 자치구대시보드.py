@@ -11,6 +11,27 @@ with st.sidebar:
     pass
 
 st.set_page_config(page_title="서울시 도서관 대시보드", layout="wide")
+# 페이지 최상단에 고정 헤더 삽입
+st.markdown(
+    """
+    <div style="
+        position: sticky;
+        top: 0;
+        background-color: white;
+        z-index: 1000;
+        padding: 8px 0;
+        text-align: center;
+        border-bottom: 2px solid #eee;
+    ">
+        <h1 style="margin: 0; font-size: 3rem; font-weight: bold;">LIBscope</h1>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# 페이지 내용이 헤더에 가려지지 않도록 약간의 여백 삽입
+st.markdown("<div style='height: 80px;'></div>", unsafe_allow_html=True)
+
 st.title("📊 서울시 자치구별 현황")
 
 # 자치구 코드 ↔ 이름 매핑
@@ -661,82 +682,6 @@ with tab3:
 
 
 with tab4:
-    # ------------------------ 키워드 순위 테이블 (최근 12개월) ------------------------
-    st.markdown("### 🗂️ 서울시 인기 키워드 TOP 10")
-
-    from dateutil.relativedelta import relativedelta
-    from collections import Counter
-
-    keyword_trend = {}
-    for i in range(12):
-        month_str = (datetime.now() - relativedelta(months=11 - i)).strftime("%Y-%m")
-        url = "http://data4library.kr/api/monthlyKeywords"
-        params = {
-            "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
-            "month": month_str
-        }
-        try:
-            res = requests.get(url, params=params, timeout=5)
-            res.raise_for_status()
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(res.content)
-            words = root.findall(".//keyword/word")
-            keyword_trend[month_str] = [w.text for w in words if w is not None]
-        except:
-            keyword_trend[month_str] = []
-
-    # 상위 키워드 10개 추출
-    all_keywords = sum(keyword_trend.values(), [])
-    top10 = [kw for kw, _ in Counter(all_keywords).most_common(10)]
-
-    # 피벗 테이블 생성
-    heat_df = pd.DataFrame(columns=["월", "키워드", "빈도"])
-    for month, words in keyword_trend.items():
-        for kw in top10:
-            count = words.count(kw)
-            heat_df = pd.concat([
-                heat_df,
-                pd.DataFrame([{"월": month, "키워드": kw, "빈도": count}])
-            ], ignore_index=True)
-    pivot_df = heat_df.pivot(index="키워드", columns="월", values="빈도").fillna(0)
-
-    # 1. 순위 역순 정렬 방지 (1위가 위로)
-    rank_table = pd.DataFrame(columns=["월", "순위", "키워드"])
-    for month, keywords in keyword_trend.items():
-        for i, kw in enumerate(keywords[:10]):
-            rank_table = pd.concat([
-                rank_table,
-                pd.DataFrame([{"월": month, "순위": f"{i+1}위", "키워드": kw}])
-            ], ignore_index=True)
-    rank_table['순위'] = pd.Categorical(rank_table['순위'],
-                                        categories=[f"{i}위" for i in range(1, 11)],
-                                        ordered=True)
-    pivot_rank_table = rank_table.pivot(index="순위", columns="월", values="키워드")
-    pivot_rank_table = pivot_rank_table.sort_index()
-
-    # 고유 키워드 색상 매핑 (2회 이상 등장한 키워드만 색 지정)
-    import seaborn as sns
-    from collections import Counter
-    all_ranked_keywords = rank_table["키워드"].dropna().tolist()
-    keyword_counts = Counter(all_ranked_keywords)
-    recurring_keywords = [kw for kw, count in keyword_counts.items() if count >= 2]
-    palette = sns.color_palette("hls", len(recurring_keywords)).as_hex()
-    color_map = dict(zip(recurring_keywords, palette))
-
-    def highlight_keyword(val):
-        if pd.isna(val):
-            return ''
-        # 해당 키워드가 전체 데이터에서 두 번 이상 등장하면 색상 지정
-        if all_ranked_keywords.count(val) >= 2:
-            color = color_map.get(val, "#ffffff")
-            return f'background-color: {color}; color: black;'
-        else:
-            return 'background-color: white; color: black;'
-
-    styled_pivot = pivot_rank_table.style.applymap(highlight_keyword)
-
-    # 3. 출력
-    st.dataframe(styled_pivot, use_container_width=True)
 
     # 제목 위 공백 스페이서
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
@@ -771,11 +716,13 @@ with tab4:
             display:flex; flex-direction:column; justify-content:center;
             height:320px; box-sizing:border-box;">
             <span style="font-size:1.84rem; font-weight:bold; color:#000; line-height:1.2; display:inline-block; text-align:center;">
-                {selected_gu} 도서관<br>정보 제공 현황
+                {selected_gu} 공공도서관<br>정보공개 현황
             </span>
             <span style="display:block; margin-top:4px;">
-              <span style="font-size:6.75rem; font-weight:bold; color:#ffae00;">{total_lib_count}</span>
-              <span style="font-size:2.5rem; color:#000;">/{lib_count}관</span>
+              <span style="display: inline-flex; align-items: baseline;">
+                <span style="font-size:6.75rem; font-weight:bold; color:#ffae00;">{total_lib_count}</span>
+                <span style="font-size:5.5rem; font-weight:bold; color:#ffae00;">관</span>
+              </span>
             </span>
         </div>
         '''
@@ -1006,5 +953,97 @@ with tab4:
     except Exception as e:
         st.error(f"API 요청 또는 데이터 처리 실패: {e}")
         
-    # ------------------------ 최근 12개월 이달의 키워드 추이 ------------------------
-   
+    # ------------------------ 키워드 기반 대출 추이 (최근 12개월) ------------------------
+    st.markdown("### 🔍 키워드 기반 대출 추이 (상위 5개)")
+    from dateutil.relativedelta import relativedelta
+    from collections import defaultdict, Counter
+    import xml.etree.ElementTree as ET
+    # 인기 대출 도서 ISBN 수집
+    isbn_list = []
+    for doc in docs:
+        isbn = doc.findtext("isbn13")
+        if isbn:
+            isbn_list.append(isbn)
+
+    # 각 ISBN에 대해 keyword + loanHistory 추출
+    all_keywords = []
+    monthly_keyword_counter = defaultdict(Counter)
+    for isbn in isbn_list:
+        try:
+            url = "http://data4library.kr/api/usageAnalysisList"
+            params = {
+                "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+                "isbn13": isbn,
+                "format": "xml"
+            }
+            r = requests.get(url, params=params, timeout=5)
+            r.raise_for_status()
+            root = ET.fromstring(r.content)
+
+            # 키워드 수집
+            keywords = root.findall(".//keywords/keyword/word")
+            all_keywords.extend([k.text for k in keywords if k is not None])
+
+            # loanHistory 추출
+            loan_nodes = root.findall(".//loanHistory/loan")
+            for ln in loan_nodes:
+                month = ln.findtext("month")
+                count = ln.findtext("loanCnt")
+                if month and count:
+                    for k in keywords[:5]:  # 키워드가 많을 수 있으므로 상위 5개만 사용
+                        if k is not None:
+                            monthly_keyword_counter[k.text][month] += int(count)
+
+        except Exception as e:
+            continue
+
+    # 상위 키워드 5개 선정
+    top_keywords = [kw for kw, _ in Counter(all_keywords).most_common(5)]
+
+    # 날짜 정렬
+    last_12_months = [
+        (datetime.now() - relativedelta(months=i)).strftime("%Y-%m") for i in reversed(range(12))
+    ]
+
+    # 꺾은선 그래프 생성
+    fig = go.Figure()
+    for kw in top_keywords:
+        y = [monthly_keyword_counter[kw].get(m, 0) for m in last_12_months]
+        fig.add_trace(go.Scatter(x=last_12_months, y=y, mode="lines+markers", name=kw))
+
+    fig.update_layout(
+        title="최근 12개월 간 키워드 기반 대출 추이",
+        xaxis_title="월",
+        yaxis_title="대출 건수 (추정)",
+        height=500,
+        margin=dict(t=60, b=60),
+        legend=dict(orientation="h", y=-0.3)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ------------------------ 인기 도서 주제분류 분포 시각화 ------------------------
+    st.markdown("### 🗂️ 인기 대출 도서 주제분류 (KDC) 빈도")
+
+    from collections import Counter
+    import plotly.express as px
+
+    class_names = [doc.findtext("class_nm") for doc in docs if doc.findtext("class_nm")]
+    class_counter = Counter(class_names)
+
+    if class_counter:
+        df_class = pd.DataFrame(class_counter.items(), columns=["주제분류", "빈도수"])
+        df_class = df_class.sort_values("빈도수", ascending=False).head(10)
+
+        fig_class = px.bar(df_class, x="주제분류", y="빈도수",
+                           title="인기 대출 도서의 주제별 분포 (상위 10개)",
+                           text="빈도수")
+        fig_class.update_layout(
+            xaxis_title="주제(KDC)",
+            yaxis_title="도서 수",
+            height=450,
+            margin=dict(t=60, b=60),
+            showlegend=False
+        )
+        st.plotly_chart(fig_class, use_container_width=True)
+    else:
+        st.info("주제분류(class_nm) 정보가 없습니다.")
