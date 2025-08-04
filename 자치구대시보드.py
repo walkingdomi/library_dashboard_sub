@@ -744,7 +744,7 @@ with tab4:
         f"<div style='margin-left:24px;'><span style='font-size:2rem; font-weight:bold; color:#000;'>📖 {selected_gu} 도서관 정보 제공 현황</span></div>",
         unsafe_allow_html=True
     )
-    api_key = "362a1492b8d6b4f19878c296012fe91abf8fd944c8cb84920e8c47882c694f9a"
+    api_key = "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e"
     region_code = 11  # 서울특별시
     url = f"http://data4library.kr/api/libSrch?authKey={api_key}&region={region_code}&dtl_region={dtl_code}&format=json&pageSize=50"
     lib_count = 0
