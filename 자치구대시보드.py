@@ -539,8 +539,6 @@ with tab3:
     seoul_avg = grouped.groupby('항목')['환산점수'].mean().reset_index(name='서울시 평균')
     detail_grouped = melted.groupby(['자치구', '항목', '문항'])['환산점수'].mean().reset_index()
     sections = ['공간이용', '정보활용', '소통정책', '문화교육', '사회관계', '장기효과']
-    selected_section = st.selectbox("항목 선택", sections)
-    st.markdown("---")
     # 레이더 차트
     data_gu = grouped[grouped['자치구'] == selected_gu_code]
     data_gu = data_gu.merge(seoul_avg, on='항목')
@@ -567,6 +565,10 @@ with tab3:
         height=550
     )
     st.plotly_chart(fig1, use_container_width=True)
+
+    # 항목 선택 드롭다운
+    selected_section = st.selectbox("항목 선택", sections)
+    st.markdown("---")
     # 막대 차트 (세부 문항)
     detail_data = detail_grouped[
         (detail_grouped['자치구'] == selected_gu_code) &
