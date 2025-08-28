@@ -702,7 +702,7 @@ with tab4:
             month_str = (datetime.now() - relativedelta(months=11 - i)).strftime("%Y-%m")
             url = "http://data4library.kr/api/monthlyKeywords"
             params = {
-                "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+                "authKey": "362a1492b8d6b4f19878c296012fe91abf8fd944c8cb84920e8c47882c694f9a",
                 "month": month_str
             }
             try:
@@ -794,7 +794,7 @@ with tab4:
         cache_key = f"libinfo_{selected_gu}_{dtl_code}"
         if cache_key in st.session_state:
             return st.session_state[cache_key]
-        api_key = "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e"
+        api_key = "362a1492b8d6b4f19878c296012fe91abf8fd944c8cb84920e8c47882c694f9a"
         region_code = 11  # 서울특별시
         url = f"http://data4library.kr/api/libSrch?authKey={api_key}&region={region_code}&dtl_region={dtl_code}&format=json&pageSize=50"
         try:
@@ -903,7 +903,7 @@ with tab4:
             return st.session_state[cache_key]
         loan_url = "http://data4library.kr/api/loanItemSrch"
         loan_params = {
-            "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+            "authKey": "362a1492b8d6b4f19878c296012fe91abf8fd944c8cb84920e8c47882c694f9a",
             "startDt": start_date,
             "endDt": end_date,
             "region": "11",
@@ -1032,7 +1032,7 @@ with tab4:
             return st.session_state[cache_key]
         readqt_url = "http://data4library.kr/api/readQt"
         readqt_params = {
-            "authKey": "1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e",
+            "authKey": "362a1492b8d6b4f19878c296012fe91abf8fd944c8cb84920e8c47882c694f9a",
             "region": "11",
             "dtl_region": str(dtl_code),
             "year": year,
