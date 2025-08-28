@@ -294,7 +294,7 @@ with tab2:
         
         # API 매개변수 설정
         params = {
-            'authKey': '1a9e6e084f13de6ecec549f3397de9c292025d6e139a145a8a694d840c6cc76e',
+            'authKey': '362a1492b8d6b4f19878c296012fe91abf8fd944c8cb84920e8c47882c694f9a',
             'libCode': lib_code,
             'startDt': start_date.strftime("%Y-%m-%d"),
             'endDt': end_date.strftime("%Y-%m-%d"),
